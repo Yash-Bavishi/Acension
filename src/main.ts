@@ -14,25 +14,28 @@ const player = new Player(scene);
 const clock = new THREE.Clock();
 
 function animate() {
-    requestAnimationFrame(animate);
+  requestAnimationFrame(animate);
 
-    let delta = clock.getDelta();
-    if (delta > 0.1) delta = 0.1;
+  let delta = clock.getDelta();
+  if (delta > 0.1) delta = 0.1;
 
-    player.update(delta, terrain);
+  // Tick the terrain engine to update moving platform sway bounding boxes
+  terrain.update(clock.getElapsedTime());
 
-    const velocityMeter = document.getElementById('velocity-display');
-    if (velocityMeter) {
-        velocityMeter.innerText = Math.round(player.getHorizontalSpeed()).toString() + ' u/s';
-    }
+  player.update(delta, terrain);
 
-    renderer.render(scene, player.camera);
+  const velocityMeter = document.getElementById('velocity-display');
+  if (velocityMeter) {
+    velocityMeter.innerText = Math.round(player.getHorizontalSpeed()).toString() + ' u/s';
+  }
+
+  renderer.render(scene, player.camera);
 }
 
 animate();
 
 window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    player.camera.aspect = window.innerWidth / window.innerHeight;
-    player.camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  player.camera.aspect = window.innerWidth / window.innerHeight;
+  player.camera.updateProjectionMatrix();
 });

@@ -3,13 +3,13 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { Terrain } from './Terrain';
 
 const PHYSICS = {
-    gravity: 80.0,          // Scaled to 5-unit player
-    friction: 4.0,          // Standard CSGO friction
-    maxVelocityGround: 25.0, // Scaled run speed
-    maxVelocityAir: 3.0,    // Scaled air-speed cap
+    gravity: 80.0,
+    friction: 4.0,
+    maxVelocityGround: 27.0,
+    maxVelocityAir: 3.0,
     accelerate: 10.0,
-    airAccelerate: 100.0,
-    jumpVelocity: 27.0      // Scaled jump impulse (feels perfect)
+    airAccelerate: 12.0,
+    jumpVelocity: 29.0
 };
 
 const PLAYER_HEIGHT = 5;
@@ -25,10 +25,12 @@ export class Player {
     private moveRight = false;
     private holdingSpace = false;
     private jumpRequested = false;
+    private jumpBufferTime = 0;
 
     constructor(scene: THREE.Scene) {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(0, 5, 120);
+        // Start further away so player isn't inside massive mountain initially
+        this.camera.position.set(0, 5, 250);
         scene.add(this.camera);
 
         this.controls = new PointerLockControls(this.camera, document.body);
@@ -76,7 +78,7 @@ export class Player {
 
             if (code === 'Space' || key === ' ') {
                 if (!this.holdingSpace) {
-                    this.jumpRequested = true;
+                    this.jumpBufferTime = 0.15; // 150ms jump buffer
                 }
                 this.holdingSpace = true;
             }
@@ -101,7 +103,7 @@ export class Player {
 
         document.addEventListener('wheel', () => {
             if (this.controls.isLocked) {
-                this.jumpRequested = true;
+                this.jumpBufferTime = 0.15;
             }
         }, { passive: true });
     }
@@ -138,9 +140,71 @@ export class Player {
 
     public update(delta: number, terrain: Terrain) {
         if (!this.controls.isLocked) return;
+        
+        if (this.jumpBufferTime > 0) {
+            this.jumpRequested = true;
+            this.jumpBufferTime -= delta;
+        } else {
+            this.jumpRequested = false;
+        }
 
-        const floorY = terrain.getHeight(this.camera.position.x, this.camera.position.z);
-        let isGrounded = this.camera.position.y <= floorY + PLAYER_HEIGHT + 0.01;
+        let floorY = terrain.getHeight(this.camera.position.x, this.camera.position.z);
+        const playerRadius = 1.8;
+        const feetY = this.camera.position.y - PLAYER_HEIGHT;
+
+        // --- 3D AABB Sweep for Dynamic Platforms ---
+        let onPlatformDisplacementX = 0;
+        let onPlatformDisplacementZ = 0;
+
+        for (const p of terrain.platforms) {
+            const b = p.box;
+
+            if (this.camera.position.x + playerRadius > b.min.x && this.camera.position.x - playerRadius < b.max.x &&
+                this.camera.position.z + playerRadius > b.min.z && this.camera.position.z - playerRadius < b.max.z) {
+
+                // If feet are above or explicitly landing onto the platform
+                if (feetY >= b.max.y - 1.5) {
+                    floorY = Math.max(floorY, b.max.y);
+
+                    // Track precise movement vector of the floor you are standing on
+                    if (floorY === b.max.y) {
+                        onPlatformDisplacementX = p.mesh.position.x - p.prevX;
+                        onPlatformDisplacementZ = p.mesh.position.z - p.prevZ;
+                    }
+                }
+                // Bonk checking for undersides (hit head)
+                else if (this.camera.position.y <= b.min.y) {
+                    if (this.worldVelocity.y > 0 && this.camera.position.y > b.min.y - 1.0) {
+                        this.worldVelocity.y = -5.0;
+                    }
+                }
+                // Hit horizontal wall, execute push-off calculation!
+                else {
+                    const dx1 = b.max.x - (this.camera.position.x - playerRadius);
+                    const dx2 = (this.camera.position.x + playerRadius) - b.min.x;
+                    const dz1 = b.max.z - (this.camera.position.z - playerRadius);
+                    const dz2 = (this.camera.position.z + playerRadius) - b.min.z;
+
+                    const minPush = Math.min(dx1, dx2, dz1, dz2);
+
+                    if (minPush === dx1) {
+                        this.camera.position.x += dx1;
+                        if (this.worldVelocity.x < 0) this.worldVelocity.x *= -0.5; // bounce a little
+                    } else if (minPush === dx2) {
+                        this.camera.position.x -= dx2;
+                        if (this.worldVelocity.x > 0) this.worldVelocity.x *= -0.5;
+                    } else if (minPush === dz1) {
+                        this.camera.position.z += dz1;
+                        if (this.worldVelocity.z < 0) this.worldVelocity.z *= -0.5;
+                    } else if (minPush === dz2) {
+                        this.camera.position.z -= dz2;
+                        if (this.worldVelocity.z > 0) this.worldVelocity.z *= -0.5;
+                    }
+                }
+            }
+        }
+
+        let isGrounded = this.camera.position.y <= floorY + PLAYER_HEIGHT + 0.05;
 
         if (!isGrounded) {
             this.worldVelocity.y -= PHYSICS.gravity * delta;
@@ -148,6 +212,11 @@ export class Player {
 
         if (isGrounded) {
             this.camera.position.y = floorY + PLAYER_HEIGHT;
+
+            // Stick to the actively swaying platform underneath you!
+            this.camera.position.x += onPlatformDisplacementX;
+            this.camera.position.z += onPlatformDisplacementZ;
+
             if (this.worldVelocity.y < 0) {
                 this.worldVelocity.y = 0;
             }
@@ -155,20 +224,17 @@ export class Player {
             if (this.jumpRequested) {
                 this.worldVelocity.y = PHYSICS.jumpVelocity;
                 isGrounded = false;
+                this.jumpRequested = false;
+                this.jumpBufferTime = 0; // consumed jump
             } else {
                 this.applyFriction(delta);
             }
         }
 
-        this.jumpRequested = false;
-
-        // The Right vector completely ignores pitch distortion.
         const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
         right.y = 0;
         right.normalize();
 
-        // Forward is cleanly mathematically derived by crossing UP with RIGHT.
-        // This wholly stops zenith floating precision coordinate flipping!
         const forward = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), right).normalize();
 
         const inputZ = Number(this.moveForward) - Number(this.moveBackward);
