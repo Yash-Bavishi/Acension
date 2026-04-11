@@ -27,6 +27,22 @@ html, body {
   z-index: 5;
 }
 
+#velocity-display {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.4);
+  color: #00ffcc;
+  padding: 10px 20px;
+  font-family: monospace;
+  font-size: 24px;
+  border-radius: 5px;
+  z-index: 5;
+  user-select: none;
+  pointer-events: none;
+  font-weight: bold;
+}
+
 #blocker {
   position: absolute;
   top: 0;
