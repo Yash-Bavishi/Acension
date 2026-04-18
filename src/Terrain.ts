@@ -99,8 +99,8 @@ export class Terrain {
     }
 
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
-        const numStations = 50;
-        const platSize = 10;
+        const numStations = 100;
+        const platSize = 7;
         const pairHalfSpan = 8;
         const arcStep = 24;
 

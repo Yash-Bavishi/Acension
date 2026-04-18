@@ -13,6 +13,19 @@ let terrain: Terrain | null = null;
 let player: Player | null = null;
 const clock = new THREE.Clock();
 let isStarted = false;
+let bhopMode: 'auto' | 'manual' = 'auto';
+
+// Bhop mode toggle
+document.getElementById('mode-auto')?.addEventListener('click', () => {
+    bhopMode = 'auto';
+    document.getElementById('mode-auto')!.classList.add('active');
+    document.getElementById('mode-manual')!.classList.remove('active');
+});
+document.getElementById('mode-manual')?.addEventListener('click', () => {
+    bhopMode = 'manual';
+    document.getElementById('mode-manual')!.classList.add('active');
+    document.getElementById('mode-auto')!.classList.remove('active');
+});
 
 function startGame(mapType: MapType) {
     // Hide Main Menu organically
@@ -23,7 +36,7 @@ function startGame(mapType: MapType) {
     document.getElementById('velocity-display')!.style.display = 'block';
 
     terrain = new Terrain(scene, mapType);
-    player = new Player(scene);
+    player = new Player(scene, bhopMode);
     player.setSpawn(terrain.spawnPoint, terrain.spawnAngleY);
     
     isStarted = true;

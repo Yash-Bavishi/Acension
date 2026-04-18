@@ -10,7 +10,7 @@ const PHYSICS = {
     maxVelocityAir: 2.0,
     accelerate: 7.0,
     airAccelerate: 8.0,
-    jumpVelocity: 29.0
+    jumpVelocity: 31.0
 };
 
 const PLAYER_HEIGHT = 5;
@@ -31,9 +31,11 @@ export class Player {
     private muzzleFlashTimer = 0;
     private tracers: { line: THREE.Line; ttl: number }[] = [];
     private scene: THREE.Scene;
+    private bhopMode: 'auto' | 'manual';
 
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, bhopMode: 'auto' | 'manual' = 'auto') {
         this.scene = scene;
+        this.bhopMode = bhopMode;
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 5, 250);
         scene.add(this.camera);
@@ -108,8 +110,9 @@ export class Player {
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
 
+        // Manual mode: scroll triggers jump buffer
         document.addEventListener('wheel', () => {
-            if (this.controls.isLocked) {
+            if (this.controls.isLocked && this.bhopMode === 'manual') {
                 this.jumpBufferTime = 0.15;
             }
         }, { passive: true });
@@ -292,22 +295,34 @@ export class Player {
             this.worldVelocity.y -= PHYSICS.gravity * delta;
         }
 
+        let jumpedThisFrame = false;
+
         if (isGrounded) {
             this.camera.position.y = floorY + PLAYER_HEIGHT;
-
-            // Stick to the actively swaying platform underneath you!
             this.camera.position.x += onPlatformDisplacementX;
             this.camera.position.z += onPlatformDisplacementZ;
 
-            if (this.worldVelocity.y < 0) {
-                this.worldVelocity.y = 0;
-            }
+            if (this.worldVelocity.y < 0) this.worldVelocity.y = 0;
 
-            if (this.jumpRequested) {
+            const shouldJump = this.bhopMode === 'auto'
+                ? this.holdingSpace
+                : this.jumpRequested;
+
+            if (shouldJump) {
+                // Boost horizontal speed on each successful hop, capped at 40 u/s
+                if (this.bhopMode === 'auto') {
+                    const spd = this.getHorizontalSpeed();
+                    if (spd > 0 && spd < 40) {
+                        const boost = Math.min(1.06, 40 / spd);
+                        this.worldVelocity.x *= boost;
+                        this.worldVelocity.z *= boost;
+                    }
+                }
                 this.worldVelocity.y = PHYSICS.jumpVelocity;
                 isGrounded = false;
+                jumpedThisFrame = true;
                 this.jumpRequested = false;
-                this.jumpBufferTime = 0; // consumed jump
+                this.jumpBufferTime = 0;
             } else {
                 this.applyFriction(delta);
             }
@@ -325,11 +340,10 @@ export class Player {
         const wishDir = new THREE.Vector3();
         wishDir.addScaledVector(forward, inputZ);
         wishDir.addScaledVector(right, inputX);
-        if (wishDir.lengthSq() > 0) {
-            wishDir.normalize();
-        }
+        if (wishDir.lengthSq() > 0) wishDir.normalize();
 
-        if (isGrounded) {
+        // Use ground acceleration on the jump frame so speed can build through bhop
+        if (isGrounded || jumpedThisFrame) {
             this.accelerate(wishDir, PHYSICS.maxVelocityGround, PHYSICS.accelerate, delta);
         } else {
             this.accelerate(wishDir, PHYSICS.maxVelocityAir, PHYSICS.airAccelerate, delta);
