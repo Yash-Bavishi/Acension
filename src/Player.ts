@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Terrain } from './Terrain';
 
 const PHYSICS = {
@@ -26,17 +27,23 @@ export class Player {
     private holdingSpace = false;
     private jumpRequested = false;
     private jumpBufferTime = 0;
+    private muzzleFlash!: THREE.PointLight;
+    private muzzleFlashTimer = 0;
+    private tracers: { line: THREE.Line; ttl: number }[] = [];
+    private scene: THREE.Scene;
 
     constructor(scene: THREE.Scene) {
+        this.scene = scene;
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        // Start further away so player isn't inside massive mountain initially
         this.camera.position.set(0, 5, 250);
         scene.add(this.camera);
 
         this.controls = new PointerLockControls(this.camera, document.body);
+        this.controls.pointerSpeed = 0.4;
 
         this.setupUI();
         this.setupInput();
+        this.setupGun();
     }
 
     private setupUI() {
@@ -108,6 +115,66 @@ export class Player {
         }, { passive: true });
     }
 
+    public setSpawn(pos: THREE.Vector3, angleY: number) {
+        this.camera.position.copy(pos);
+        this.camera.rotation.set(0, angleY, 0);
+    }
+
+    private setupGun() {
+        const gunPivot = new THREE.Group();
+        gunPivot.position.set(0.22, -0.22, -0.45);
+        this.camera.add(gunPivot);
+
+        // Muzzle flash
+        this.muzzleFlash = new THREE.PointLight(0xffaa33, 0, 10);
+        this.muzzleFlash.position.set(0, 0.02, -0.25);
+        gunPivot.add(this.muzzleFlash);
+
+        // Dedicated light so the gun is lit independently of the scene
+        const gunLight = new THREE.PointLight(0xffffff, 2.5, 3);
+        gunLight.position.set(0, 0.4, 0.1);
+        gunPivot.add(gunLight);
+
+        // --- Load Desert Eagle with original materials ---
+        const loader = new GLTFLoader();
+        loader.load('/desert_eagle_gun.glb', (gltf) => {
+            const model = gltf.scene;
+
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            model.scale.setScalar(0.35 / Math.max(size.x, size.y, size.z));
+
+            box.setFromObject(model);
+            model.position.sub(box.getCenter(new THREE.Vector3()));
+            model.rotation.y = Math.PI;
+
+            gunPivot.add(model);
+        }, undefined, (err) => console.error('Gun load error:', err));
+
+        document.addEventListener('click', () => {
+            if (!this.controls.isLocked) return;
+            this.muzzleFlash.intensity = 5;
+            this.muzzleFlashTimer = 0.08;
+            this.spawnTracer();
+        });
+    }
+
+    private spawnTracer() {
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+
+        // Trace 300 units forward if nothing is hit
+        const end = raycaster.ray.origin.clone()
+            .addScaledVector(raycaster.ray.direction, 300);
+
+        const points = [raycaster.ray.origin.clone(), end];
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const mat = new THREE.LineBasicMaterial({ color: 0xffee88, transparent: true, opacity: 1.0 });
+        const line = new THREE.Line(geo, mat);
+        this.scene.add(line);
+        this.tracers.push({ line, ttl: 0.12 });
+    }
+
     private applyFriction(t: number) {
         let speed = Math.sqrt(this.worldVelocity.x * this.worldVelocity.x + this.worldVelocity.z * this.worldVelocity.z);
         if (speed < 0.1) {
@@ -140,7 +207,22 @@ export class Player {
 
     public update(delta: number, terrain: Terrain) {
         if (!this.controls.isLocked) return;
-        
+
+        if (this.muzzleFlashTimer > 0) {
+            this.muzzleFlashTimer -= delta;
+            if (this.muzzleFlashTimer <= 0) this.muzzleFlash.intensity = 0;
+        }
+
+        for (let i = this.tracers.length - 1; i >= 0; i--) {
+            const t = this.tracers[i];
+            t.ttl -= delta;
+            (t.line.material as THREE.LineBasicMaterial).opacity = Math.max(0, t.ttl / 0.12);
+            if (t.ttl <= 0) {
+                this.scene.remove(t.line);
+                this.tracers.splice(i, 1);
+            }
+        }
+
         if (this.jumpBufferTime > 0) {
             this.jumpRequested = true;
             this.jumpBufferTime -= delta;

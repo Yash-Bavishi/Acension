@@ -24,6 +24,7 @@ function startGame(mapType: MapType) {
 
     terrain = new Terrain(scene, mapType);
     player = new Player(scene);
+    player.setSpawn(terrain.spawnPoint, terrain.spawnAngleY);
     
     isStarted = true;
     animate();

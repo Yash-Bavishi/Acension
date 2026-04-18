@@ -16,6 +16,8 @@ export class Terrain {
     public mesh: THREE.Mesh;
     public platforms: Platform[] = [];
     public type: MapType;
+    public spawnPoint = new THREE.Vector3();
+    public spawnAngleY = 0;
 
     constructor(scene: THREE.Scene, type: MapType = 'classic') {
         this.type = type;
@@ -99,7 +101,7 @@ export class Terrain {
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
         const numStations = 50;
         const platSize = 10;
-        const pairHalfSpan = 11; // centre-to-centre 22, edge gap 12
+        const pairHalfSpan = 11;
         const arcStep = 30;
 
         const platformMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2 });
@@ -127,21 +129,19 @@ export class Terrain {
             const ocx = Math.cos(angle) * outwardR;
             const ocz = Math.sin(angle) * outwardR;
 
+            if (i === 0) {
+                const spawnR = outwardR + 18;
+                const spawnX = Math.cos(angle) * spawnR;
+                const spawnZ = Math.sin(angle) * spawnR;
+                const spawnY = Math.max(spiralY, this.getHeight(spawnX, spawnZ) + 6);
+                this.spawnPoint.set(spawnX, spawnY, spawnZ);
+                this.spawnAngleY = Math.atan2(Math.cos(angle), Math.sin(angle));
+            }
+
             for (const side of [-1, 1] as const) {
                 const px = ocx + tx * side * pairHalfSpan;
                 const pz = ocz + tz * side * pairHalfSpan;
-
-                // Sample all 4 corners of the platform footprint and use the highest point
-                const rx = Math.cos(angle);
-                const rz = Math.sin(angle);
-                const h = platSize / 2;
-                const terrainMax = Math.max(
-                    this.getHeight(px + rx * h + tx * h, pz + rz * h + tz * h),
-                    this.getHeight(px + rx * h - tx * h, pz + rz * h - tz * h),
-                    this.getHeight(px - rx * h + tx * h, pz - rz * h + tz * h),
-                    this.getHeight(px - rx * h - tx * h, pz - rz * h - tz * h),
-                );
-                const py = Math.max(spiralY, terrainMax + 6);
+                const py = spiralY;
 
                 const geo = new THREE.BoxGeometry(platSize, 2, platSize);
                 const pMat = platformMat.clone();
