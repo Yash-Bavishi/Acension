@@ -101,8 +101,8 @@ export class Terrain {
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
         const numStations = 50;
         const platSize = 10;
-        const pairHalfSpan = 11;
-        const arcStep = 30;
+        const pairHalfSpan = 8;
+        const arcStep = 24;
 
         const platformMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2 });
         const fujiColor = new THREE.Color(0xffa8c0);
@@ -121,8 +121,6 @@ export class Terrain {
             }
             const r = Math.max(14, rRaw);
 
-            const tx = -Math.sin(angle);
-            const tz =  Math.cos(angle);
 
             // Push platforms outward so they clear the mountain face
             const outwardR = r + 14;
@@ -130,7 +128,7 @@ export class Terrain {
             const ocz = Math.sin(angle) * outwardR;
 
             if (i === 0) {
-                const spawnR = outwardR + 18;
+                const spawnR = outwardR + 6;
                 const spawnX = Math.cos(angle) * spawnR;
                 const spawnZ = Math.sin(angle) * spawnR;
                 const spawnY = Math.max(spiralY, this.getHeight(spawnX, spawnZ) + 6);
@@ -138,10 +136,21 @@ export class Terrain {
                 this.spawnAngleY = Math.atan2(Math.cos(angle), Math.sin(angle));
             }
 
-            for (const side of [-1, 1] as const) {
-                const px = ocx + tx * side * pairHalfSpan;
-                const pz = ocz + tz * side * pairHalfSpan;
-                const py = spiralY;
+            const rx = Math.cos(angle);
+            const rz = Math.sin(angle);
+            const tx = -Math.sin(angle);
+            const tz =  Math.cos(angle);
+
+            // Even: right higher+forward, left lower+back. Odd: flipped.
+            const pyRight = spiralY + (i % 2 === 0 ? 4 : 0);
+            const pyLeft  = spiralY + (i % 2 === 0 ? 0 : 4);
+            const fwdOffset = 4; // how far forward the elevated platform is pushed
+
+            for (const [side, py] of [[1, pyRight], [-1, pyLeft]] as const) {
+                const isElevated = py > spiralY;
+                const fwd = isElevated ? fwdOffset : -fwdOffset;
+                const px = ocx + rx * side * pairHalfSpan + tx * fwd;
+                const pz = ocz + rz * side * pairHalfSpan + tz * fwd;
 
                 const geo = new THREE.BoxGeometry(platSize, 2, platSize);
                 const pMat = platformMat.clone();

@@ -6,10 +6,10 @@ import { Terrain } from './Terrain';
 const PHYSICS = {
     gravity: 80.0,
     friction: 4.0,
-    maxVelocityGround: 27.0,
-    maxVelocityAir: 3.0,
-    accelerate: 10.0,
-    airAccelerate: 12.0,
+    maxVelocityGround: 18.0,
+    maxVelocityAir: 2.0,
+    accelerate: 7.0,
+    airAccelerate: 8.0,
     jumpVelocity: 29.0
 };
 
