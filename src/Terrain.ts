@@ -97,69 +97,84 @@ export class Terrain {
     }
 
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
-        const numPlatforms = 160;
+        const numStations = 50;
+        const platSize = 10;
+        const pairHalfSpan = 11; // centre-to-centre 22, edge gap 12
+        const arcStep = 30;
+
         const platformMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2 });
+        const fujiColor = new THREE.Color(0xffa8c0);
 
-        const fujiWoodColor = new THREE.Color(0xffa8c0); 
+        let angle = 0;
 
-        for (let i = 0; i < numPlatforms; i++) {
-            const t = i / numPlatforms;
-            const y = 35 + t * 270;
+        for (let i = 0; i < numStations; i++) {
+            const t = i / (numStations - 1);
+            const spiralY = 35 + t * 255;
 
-            let r = 0;
+            let rRaw = 0;
             if (this.type === 'fuji') {
-                if (y < 350) {
-                    r = Math.sqrt(-6000 * Math.log(y / 350));
-                }
+                if (spiralY < 350) rRaw = Math.sqrt(-6000 * Math.log(spiralY / 350));
             } else {
-                if (y < 350) {
-                    r = Math.sqrt(-20000 * Math.log(y / 350));
-                }
+                if (spiralY < 350) rRaw = Math.sqrt(-20000 * Math.log(spiralY / 350));
             }
-            r += 18;
+            const r = Math.max(14, rRaw);
 
-            const angle = t * Math.PI * 16;
-            const x = Math.cos(angle) * r;
-            const z = Math.sin(angle) * r;
+            const tx = -Math.sin(angle);
+            const tz =  Math.cos(angle);
 
-            const size = 18 - (t * 10);
-            const boxGeo = new THREE.BoxGeometry(size, 2, size);
+            // Push platforms outward so they clear the mountain face
+            const outwardR = r + 14;
+            const ocx = Math.cos(angle) * outwardR;
+            const ocz = Math.sin(angle) * outwardR;
 
-            const pMat = platformMat.clone();
-            
-            if (this.type === 'fuji') {
-                pMat.color.copy(fujiWoodColor);
-            } else {
-                if (y > 180) {
-                    pMat.color.lerpColors(colorRock, colorSnow, Math.min(1, (y - 180) / 40));
+            for (const side of [-1, 1] as const) {
+                const px = ocx + tx * side * pairHalfSpan;
+                const pz = ocz + tz * side * pairHalfSpan;
+
+                // Sample all 4 corners of the platform footprint and use the highest point
+                const rx = Math.cos(angle);
+                const rz = Math.sin(angle);
+                const h = platSize / 2;
+                const terrainMax = Math.max(
+                    this.getHeight(px + rx * h + tx * h, pz + rz * h + tz * h),
+                    this.getHeight(px + rx * h - tx * h, pz + rz * h - tz * h),
+                    this.getHeight(px - rx * h + tx * h, pz - rz * h + tz * h),
+                    this.getHeight(px - rx * h - tx * h, pz - rz * h - tz * h),
+                );
+                const py = Math.max(spiralY, terrainMax + 6);
+
+                const geo = new THREE.BoxGeometry(platSize, 2, platSize);
+                const pMat = platformMat.clone();
+
+                if (this.type === 'fuji') {
+                    pMat.color.copy(fujiColor);
                 } else {
-                    pMat.color.copy(colorRock);
+                    if (py > 180) {
+                        pMat.color.lerpColors(colorRock, colorSnow, Math.min(1, (py - 180) / 40));
+                    } else {
+                        pMat.color.copy(colorRock);
+                    }
                 }
+
+                const pMesh = new THREE.Mesh(geo, pMat);
+                pMesh.position.set(px, py, pz);
+                scene.add(pMesh);
+
+                const box = new THREE.Box3().setFromObject(pMesh);
+                this.platforms.push({
+                    mesh: pMesh, box,
+                    r: outwardR, baseAngle: angle,
+                    originY: py,
+                    prevX: px, prevZ: pz
+                });
             }
 
-            const pMesh = new THREE.Mesh(boxGeo, pMat);
-            pMesh.position.set(x, y, z);
-            scene.add(pMesh);
-
-            const box = new THREE.Box3().setFromObject(pMesh);
-            this.platforms.push({ mesh: pMesh, box: box, r: r, baseAngle: angle, originY: y, prevX: x, prevZ: z });
+            angle += arcStep / r;
         }
     }
 
-    public update(time: number) {
-        for (let i = 0; i < this.platforms.length; i++) {
-            const p = this.platforms[i];
-            
-            p.prevX = p.mesh.position.x;
-            p.prevZ = p.mesh.position.z;
-
-            const currentAngle = p.baseAngle + Math.sin(time * 0.3 + i) * 0.15; 
-            p.mesh.position.x = Math.cos(currentAngle) * p.r;
-            p.mesh.position.z = Math.sin(currentAngle) * p.r;
-            
-            p.mesh.updateMatrixWorld();
-            p.box.setFromObject(p.mesh); 
-        }
+    public update(_time: number) {
+        // Platforms are static — nothing to update
     }
 
     public getHeight(x: number, z: number): number {
