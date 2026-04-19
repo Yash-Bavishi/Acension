@@ -15,6 +15,7 @@
       <canvas id="canvas"></canvas>
       <div id="crosshair" style="display: none;"></div>
       <div id="velocity-display" style="display: none;">0 u/s</div>
+      <div id="username-display" style="display: none;"></div>
       
       <!-- Pause Overlay -->
       <div id="blocker" style="display: none;">
@@ -29,6 +30,11 @@
         <h1 class="logo">ASCENSION</h1>
         <p class="subtitle">Select your climb</p>
         
+        <!-- Username Input -->
+        <div class="username-input-wrap">
+          <input type="text" id="username-input" class="username-input" placeholder="Enter your name" maxlength="20" autocomplete="off" spellcheck="false" />
+        </div>
+
         <!-- Bhop Mode Toggle -->
         <div class="bhop-toggle">
           <span class="toggle-label">BHOP MODE</span>

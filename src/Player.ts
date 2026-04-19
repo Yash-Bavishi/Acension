@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Terrain } from './Terrain';
+import { Bot } from './Bot';
 
 const PHYSICS = {
     gravity: 80.0,
@@ -32,6 +33,7 @@ export class Player {
     private tracers: { line: THREE.Line; ttl: number }[] = [];
     private scene: THREE.Scene;
     private bhopMode: 'auto' | 'manual';
+    private bots: Bot[] = [];
 
     constructor(scene: THREE.Scene, bhopMode: 'auto' | 'manual' = 'auto') {
         this.scene = scene;
@@ -118,6 +120,10 @@ export class Player {
         }, { passive: true });
     }
 
+    public setBots(bots: Bot[]) {
+        this.bots = bots;
+    }
+
     public setSpawn(pos: THREE.Vector3, angleY: number) {
         this.camera.position.copy(pos);
         this.camera.rotation.set(0, angleY, 0);
@@ -166,9 +172,18 @@ export class Player {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
 
-        // Trace 300 units forward if nothing is hit
-        const end = raycaster.ray.origin.clone()
-            .addScaledVector(raycaster.ray.direction, 300);
+        // Check bot hits
+        const botMeshes = this.bots.flatMap(b => b.getHittableMeshes());
+        const hits = raycaster.intersectObjects(botMeshes);
+        if (hits.length > 0) {
+            const hitMesh = hits[0].object as THREE.Mesh;
+            const bot = this.bots.find(b => b.getHittableMeshes().includes(hitMesh));
+            bot?.hit(34); // 3 shots to kill
+        }
+
+        const end = hits.length > 0
+            ? hits[0].point
+            : raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 300);
 
         const points = [raycaster.ray.origin.clone(), end];
         const geo = new THREE.BufferGeometry().setFromPoints(points);

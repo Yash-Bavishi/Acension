@@ -28,16 +28,33 @@ document.getElementById('mode-manual')?.addEventListener('click', () => {
 });
 
 function startGame(mapType: MapType) {
+    const input = document.getElementById('username-input') as HTMLInputElement;
+    const username = input.value.trim();
+    if (!username) {
+        input.classList.add('shake');
+        input.placeholder = 'Name required!';
+        setTimeout(() => {
+            input.classList.remove('shake');
+            input.placeholder = 'Enter your name';
+        }, 600);
+        return;
+    }
+
     // Hide Main Menu organically
     document.getElementById('main-menu')!.style.display = 'none';
-    
+
     // Un-hide in-game UI overlay
     document.getElementById('crosshair')!.style.display = 'block';
     document.getElementById('velocity-display')!.style.display = 'block';
 
+    const usernameDisplay = document.getElementById('username-display')!;
+    usernameDisplay.innerText = username;
+    usernameDisplay.style.display = 'block';
+
     terrain = new Terrain(scene, mapType);
     player = new Player(scene, bhopMode);
     player.setSpawn(terrain.spawnPoint, terrain.spawnAngleY);
+
     
     isStarted = true;
     animate();
