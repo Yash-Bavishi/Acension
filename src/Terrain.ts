@@ -101,7 +101,7 @@ export class Terrain {
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
         const numStations = 100;
         const platSize = 7;
-        const pairHalfSpan = 8;
+        const pairHalfSpan = 4;
         const arcStep = 24;
 
         const platformMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.2 });
@@ -142,8 +142,8 @@ export class Terrain {
             const tz =  Math.cos(angle);
 
             // Even: right higher+forward, left lower+back. Odd: flipped.
-            const pyRight = spiralY + (i % 2 === 0 ? 4 : 0);
-            const pyLeft  = spiralY + (i % 2 === 0 ? 0 : 4);
+            const pyRight = spiralY + (i % 2 === 0 ? 2 : 0);
+            const pyLeft  = spiralY + (i % 2 === 0 ? 0 : 2);
             const fwdOffset = 4; // how far forward the elevated platform is pushed
 
             for (const [side, py] of [[1, pyRight], [-1, pyLeft]] as const) {

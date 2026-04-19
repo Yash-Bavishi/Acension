@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { Terrain, MapType } from './Terrain';
 import { Player } from './Player';
+import { PacerBot } from './PacerBot';
 
 const canvas = document.querySelector('#canvas') as HTMLCanvasElement;
 const scene = new THREE.Scene();
@@ -11,6 +12,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 let terrain: Terrain | null = null;
 let player: Player | null = null;
+let pacerBot: PacerBot | null = null;
 const clock = new THREE.Clock();
 let isStarted = false;
 let bhopMode: 'auto' | 'manual' = 'auto';
@@ -54,6 +56,19 @@ function startGame(mapType: MapType) {
     terrain = new Terrain(scene, mapType);
     player = new Player(scene, bhopMode);
     player.setSpawn(terrain.spawnPoint, terrain.spawnAngleY);
+    pacerBot = new PacerBot(scene, terrain, 0.75);
+
+    const bhopDisplay = document.getElementById('bhop-display')!;
+    const bhopCount = document.getElementById('bhop-count')!;
+    bhopDisplay.style.display = 'flex';
+    let bhopFlashTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    player.onBhop = (chain: number) => {
+        bhopCount.innerText = chain.toString();
+        bhopDisplay.classList.add('flash');
+        if (bhopFlashTimeout) clearTimeout(bhopFlashTimeout);
+        bhopFlashTimeout = setTimeout(() => bhopDisplay.classList.remove('flash'), 120);
+    };
 
     
     isStarted = true;
@@ -80,6 +95,7 @@ function animate() {
 
     terrain.update(clock.getElapsedTime());
     player.update(delta, terrain);
+    pacerBot?.update(delta, terrain);
 
     const velocityMeter = document.getElementById('velocity-display');
     if (velocityMeter) {

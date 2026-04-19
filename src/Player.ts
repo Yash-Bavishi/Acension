@@ -34,6 +34,8 @@ export class Player {
     private scene: THREE.Scene;
     private bhopMode: 'auto' | 'manual';
     private bots: Bot[] = [];
+    public onBhop: ((chain: number) => void) | null = null;
+    private bhopChain = 0;
 
     constructor(scene: THREE.Scene, bhopMode: 'auto' | 'manual' = 'auto') {
         this.scene = scene;
@@ -213,6 +215,7 @@ export class Player {
 
     private accelerate(wishDir: THREE.Vector3, wishSpeed: number, accel: number, t: number) {
         let currentSpeed = this.worldVelocity.x * wishDir.x + this.worldVelocity.z * wishDir.z;
+        currentSpeed = Math.max(0, currentSpeed); // don't penalize sharp turns
         let addSpeed = wishSpeed - currentSpeed;
         if (addSpeed <= 0) return;
 
@@ -324,13 +327,21 @@ export class Player {
                 : this.jumpRequested;
 
             if (shouldJump) {
-                // Boost horizontal speed on each successful hop, capped at 40 u/s
-                if (this.bhopMode === 'auto') {
-                    const spd = this.getHorizontalSpeed();
-                    if (spd > 0 && spd < 40) {
-                        const boost = Math.min(1.06, 40 / spd);
-                        this.worldVelocity.x *= boost;
-                        this.worldVelocity.z *= boost;
+                const spd = this.getHorizontalSpeed();
+                if (spd > 0 && this.bhopChain >= 3) {
+                    const newSpd = Math.min(spd * (this.bhopMode === 'auto' ? 1.18 : 1.08), 200);
+
+                    if (this.bhopMode === 'auto') {
+                        // Camera always steers in auto mode
+                        const camForward = new THREE.Vector3();
+                        this.camera.getWorldDirection(camForward);
+                        camForward.y = 0;
+                        camForward.normalize();
+                        this.worldVelocity.x = camForward.x * newSpd;
+                        this.worldVelocity.z = camForward.z * newSpd;
+                    } else {
+                        this.worldVelocity.x *= newSpd / spd;
+                        this.worldVelocity.z *= newSpd / spd;
                     }
                 }
                 this.worldVelocity.y = PHYSICS.jumpVelocity;
@@ -338,7 +349,14 @@ export class Player {
                 jumpedThisFrame = true;
                 this.jumpRequested = false;
                 this.jumpBufferTime = 0;
+
+                // Register bhop — grounded + speed means it's a real hop
+                if (spd > 4) {
+                    this.bhopChain++;
+                    this.onBhop?.(this.bhopChain);
+                }
             } else {
+                this.bhopChain = 0;
                 this.applyFriction(delta);
             }
         }
@@ -357,9 +375,9 @@ export class Player {
         wishDir.addScaledVector(right, inputX);
         if (wishDir.lengthSq() > 0) wishDir.normalize();
 
-        // Use ground acceleration on the jump frame so speed can build through bhop
+        const hasInput = this.moveForward || this.moveBackward || this.moveLeft || this.moveRight;
         if (isGrounded || jumpedThisFrame) {
-            this.accelerate(wishDir, PHYSICS.maxVelocityGround, PHYSICS.accelerate, delta);
+            if (hasInput) this.accelerate(wishDir, PHYSICS.maxVelocityGround, PHYSICS.accelerate, delta);
         } else {
             this.accelerate(wishDir, PHYSICS.maxVelocityAir, PHYSICS.airAccelerate, delta);
         }
