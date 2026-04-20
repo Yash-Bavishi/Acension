@@ -36,6 +36,8 @@ export class Player {
     private bots: Bot[] = [];
     public onBhop: ((chain: number) => void) | null = null;
     private bhopChain = 0;
+    private yaw = 0;
+    private pitch = 0;
 
     constructor(scene: THREE.Scene, bhopMode: 'auto' | 'manual' = 'auto') {
         this.scene = scene;
@@ -45,7 +47,20 @@ export class Player {
         scene.add(this.camera);
 
         this.controls = new PointerLockControls(this.camera, document.body);
-        this.controls.pointerSpeed = 0.4;
+        this.controls.pointerSpeed = 0;  // disable built-in rotation — we handle it
+
+        // Custom mouse handler: clamp spikes, apply directly each event
+        document.addEventListener('mousemove', (e) => {
+            if (!this.controls.isLocked) return;
+            const dx = Math.max(-30, Math.min(30, e.movementX));
+            const dy = Math.max(-30, Math.min(30, e.movementY));
+            this.yaw   -= dx * 0.0016;
+            this.pitch -= dy * 0.0016;
+            this.pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, this.pitch));
+            this.camera.rotation.order = 'YXZ';
+            this.camera.rotation.y = this.yaw;
+            this.camera.rotation.x = this.pitch;
+        });
 
         this.setupUI();
         this.setupInput();
@@ -128,7 +143,11 @@ export class Player {
 
     public setSpawn(pos: THREE.Vector3, angleY: number) {
         this.camera.position.copy(pos);
-        this.camera.rotation.set(0, angleY, 0);
+        this.yaw = angleY;
+        this.pitch = 0;
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = this.pitch;
     }
 
     private setupGun() {
