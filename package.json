@@ -5,13 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "serve dist -l ${PORT:-4173}"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "serve": "^14.2.6",
     "three": "^0.183.2"
   },
   "devDependencies": {
