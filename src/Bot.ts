@@ -13,10 +13,8 @@ export class Bot {
     private health = 100;
     private isDead = false;
     private respawnTimer = 0;
-    private scene: THREE.Scene;
-
     constructor(scene: THREE.Scene, position: THREE.Vector3) {
-        this.scene = scene;
+        void scene;
         this.group = new THREE.Group();
         this.group.position.copy(position);
         this.build();
