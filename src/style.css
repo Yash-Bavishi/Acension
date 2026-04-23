@@ -15,6 +15,46 @@ html, body {
   height: 100vh;
 }
 
+#speed-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(255, 60, 0, 0.55) 100%);
+  transition: opacity 0.12s ease;
+}
+
+#milestone-banner {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Outfit', sans-serif;
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #fff;
+  text-shadow: 0 0 30px rgba(0, 242, 254, 1), 0 0 60px rgba(0, 242, 254, 0.5);
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+#milestone-banner.show {
+  animation: milestone-pop 1.4s ease forwards;
+}
+
+@keyframes milestone-pop {
+  0%   { opacity: 0; transform: translateX(-50%) scale(0.7); }
+  15%  { opacity: 1; transform: translateX(-50%) scale(1.08); }
+  30%  { transform: translateX(-50%) scale(1); }
+  70%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) scale(1); }
+}
+
 #crosshair {
   position: absolute;
   top: 50%;

@@ -42,10 +42,8 @@ function startGame(mapType: MapType) {
         return;
     }
 
-    // Hide Main Menu organically
     document.getElementById('main-menu')!.style.display = 'none';
 
-    // Un-hide in-game UI overlay
     document.getElementById('crosshair')!.style.display = 'block';
     document.getElementById('velocity-display')!.style.display = 'block';
 
@@ -63,18 +61,29 @@ function startGame(mapType: MapType) {
     bhopDisplay.style.display = 'flex';
     let bhopFlashTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    const milestoneBanner = document.getElementById('milestone-banner')!;
+    const milestones: Record<number, string> = { 5: 'STREAKING', 10: 'ON FIRE', 25: 'INSANE', 50: 'GODLIKE' };
+    let milestoneTimeout: ReturnType<typeof setTimeout> | null = null;
+
     player.onBhop = (chain: number) => {
         bhopCount.innerText = chain.toString();
         bhopDisplay.classList.add('flash');
         if (bhopFlashTimeout) clearTimeout(bhopFlashTimeout);
         bhopFlashTimeout = setTimeout(() => bhopDisplay.classList.remove('flash'), 120);
+
+        if (milestones[chain]) {
+            milestoneBanner.textContent = milestones[chain];
+            milestoneBanner.classList.remove('show');
+            void milestoneBanner.offsetWidth;
+            milestoneBanner.classList.add('show');
+            if (milestoneTimeout) clearTimeout(milestoneTimeout);
+            milestoneTimeout = setTimeout(() => milestoneBanner.classList.remove('show'), 1400);
+        }
     };
 
-    
     isStarted = true;
     animate();
-    
-    // Auto-lock controls after a brief moment so the DOM properly transitions
+
     setTimeout(() => {
         if (player && player.controls) {
             player.controls.lock();
@@ -97,19 +106,21 @@ function animate() {
     player.update(delta, terrain);
     pacerBot?.update(delta, terrain);
 
+    const spd = player.getHorizontalSpeed();
+
     const velocityMeter = document.getElementById('velocity-display');
-    if (velocityMeter) {
-        velocityMeter.innerText = Math.round(player.getHorizontalSpeed()).toString() + ' u/s';
-    }
+    if (velocityMeter) velocityMeter.innerText = Math.round(spd).toString() + ' u/s';
+
+    const vignette = document.getElementById('speed-vignette');
+    if (vignette) vignette.style.opacity = Math.min(1, spd / 120).toFixed(3);
 
     renderer.render(scene, player.camera);
 }
 
-// Wait for click event explicitly before updating resize
 window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (player) {
-         player.camera.aspect = window.innerWidth / window.innerHeight;
-         player.camera.updateProjectionMatrix();
+        player.camera.aspect = window.innerWidth / window.innerHeight;
+        player.camera.updateProjectionMatrix();
     }
 });

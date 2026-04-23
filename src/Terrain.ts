@@ -121,7 +121,6 @@ export class Terrain {
             }
             const r = Math.max(14, rRaw);
 
-
             // Push platforms outward so they clear the mountain face
             const outwardR = r + 14;
             const ocx = Math.cos(angle) * outwardR;
@@ -144,7 +143,7 @@ export class Terrain {
             // Even: right higher+forward, left lower+back. Odd: flipped.
             const pyRight = spiralY + (i % 2 === 0 ? 2 : 0);
             const pyLeft  = spiralY + (i % 2 === 0 ? 0 : 2);
-            const fwdOffset = 4; // how far forward the elevated platform is pushed
+            const fwdOffset = 4;
 
             for (const [side, py] of [[1, pyRight], [-1, pyLeft]] as const) {
                 const isElevated = py > spiralY;
@@ -180,6 +179,7 @@ export class Terrain {
 
             angle += arcStep / r;
         }
+
     }
 
     public update(_time: number) {

@@ -30,7 +30,10 @@ export class Player {
     private jumpBufferTime = 0;
     private muzzleFlash!: THREE.PointLight;
     private muzzleFlashTimer = 0;
-    private tracers: { line: THREE.Line; ttl: number }[] = [];
+    private bulletTemplate: THREE.Group | null = null;
+    private bullets: { obj: THREE.Object3D; vel: THREE.Vector3; ttl: number }[] = [];
+    private gunPivot!: THREE.Group;
+    private muzzleAnchor = new THREE.Object3D();
     private scene: THREE.Scene;
     private bhopMode: 'auto' | 'manual';
     private bots: Bot[] = [];
@@ -151,67 +154,82 @@ export class Player {
     }
 
     private setupGun() {
-        const gunPivot = new THREE.Group();
-        gunPivot.position.set(0.22, -0.22, -0.45);
-        this.camera.add(gunPivot);
+        this.gunPivot = new THREE.Group();
+        this.gunPivot.position.set(0.28, -0.39, -0.5);
+        this.camera.add(this.gunPivot);
 
-        // Muzzle flash
-        this.muzzleFlash = new THREE.PointLight(0xffaa33, 0, 10);
+        this.muzzleFlash = new THREE.PointLight(0x00f2fe, 0, 10);
         this.muzzleFlash.position.set(0, 0.02, -0.25);
-        gunPivot.add(this.muzzleFlash);
+        this.gunPivot.add(this.muzzleFlash);
 
         // Dedicated light so the gun is lit independently of the scene
         const gunLight = new THREE.PointLight(0xffffff, 2.5, 3);
         gunLight.position.set(0, 0.4, 0.1);
-        gunPivot.add(gunLight);
+        this.gunPivot.add(gunLight);
 
-        // --- Load Desert Eagle with original materials ---
         const loader = new GLTFLoader();
-        loader.load('/desert_eagle_gun.glb', (gltf) => {
+        loader.load('/bubble_gun.glb', (gltf) => {
             const model = gltf.scene;
 
             const box = new THREE.Box3().setFromObject(model);
             const size = box.getSize(new THREE.Vector3());
-            model.scale.setScalar(0.35 / Math.max(size.x, size.y, size.z));
+            model.scale.setScalar(0.3 / Math.max(size.x, size.y, size.z));
 
             box.setFromObject(model);
             model.position.sub(box.getCenter(new THREE.Vector3()));
-            model.rotation.y = Math.PI;
+            model.rotation.set(-0.6, 0.1, 0.5);
 
-            gunPivot.add(model);
+            // Attach muzzle anchor at barrel tip (max X = cone/funnel end)
+            box.setFromObject(model);
+            this.muzzleAnchor.position.set(box.max.x, -0.08, 0);
+            model.add(this.muzzleAnchor);
+
+            this.gunPivot.add(model);
         }, undefined, (err) => console.error('Gun load error:', err));
+
+        // Preload bullet model
+        const bulletLoader = new GLTFLoader();
+        bulletLoader.load('/gun_bullet_cartoonic.glb', (gltf) => {
+            this.bulletTemplate = gltf.scene;
+            const box = new THREE.Box3().setFromObject(this.bulletTemplate);
+            const size = box.getSize(new THREE.Vector3());
+            this.bulletTemplate.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z));
+        });
 
         document.addEventListener('click', () => {
             if (!this.controls.isLocked) return;
             this.muzzleFlash.intensity = 5;
             this.muzzleFlashTimer = 0.08;
-            this.spawnTracer();
+            this.spawnBullet();
         });
     }
 
-    private spawnTracer() {
+    private spawnBullet() {
+        // Instant hit detection
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-
-        // Check bot hits
         const botMeshes = this.bots.flatMap(b => b.getHittableMeshes());
         const hits = raycaster.intersectObjects(botMeshes);
         if (hits.length > 0) {
             const hitMesh = hits[0].object as THREE.Mesh;
             const bot = this.bots.find(b => b.getHittableMeshes().includes(hitMesh));
-            bot?.hit(34); // 3 shots to kill
+            bot?.hit(34);
         }
 
-        const end = hits.length > 0
-            ? hits[0].point
-            : raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 300);
+        if (!this.bulletTemplate) return;
 
-        const points = [raycaster.ray.origin.clone(), end];
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: 0xffee88, transparent: true, opacity: 1.0 });
-        const line = new THREE.Line(geo, mat);
-        this.scene.add(line);
-        this.tracers.push({ line, ttl: 0.12 });
+        const direction = new THREE.Vector3();
+        this.camera.getWorldDirection(direction);
+
+        const bullet = this.bulletTemplate.clone();
+        const spawnPos = new THREE.Vector3();
+        this.muzzleAnchor.getWorldPosition(spawnPos);
+        bullet.position.copy(spawnPos);
+        bullet.lookAt(spawnPos.clone().add(direction));
+        bullet.rotateX(Math.PI / 2);
+        this.scene.add(bullet);
+
+        this.bullets.push({ obj: bullet, vel: direction.clone().multiplyScalar(45), ttl: 1.0 });
     }
 
     private applyFriction(t: number) {
@@ -253,13 +271,14 @@ export class Player {
             if (this.muzzleFlashTimer <= 0) this.muzzleFlash.intensity = 0;
         }
 
-        for (let i = this.tracers.length - 1; i >= 0; i--) {
-            const t = this.tracers[i];
-            t.ttl -= delta;
-            (t.line.material as THREE.LineBasicMaterial).opacity = Math.max(0, t.ttl / 0.12);
-            if (t.ttl <= 0) {
-                this.scene.remove(t.line);
-                this.tracers.splice(i, 1);
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const b = this.bullets[i];
+            b.ttl -= delta;
+            b.vel.y -= 30 * delta;
+            b.obj.position.addScaledVector(b.vel, delta);
+            if (b.ttl <= 0) {
+                this.scene.remove(b.obj);
+                this.bullets.splice(i, 1);
             }
         }
 
@@ -402,6 +421,12 @@ export class Player {
         }
 
         this.camera.position.addScaledVector(this.worldVelocity, delta);
+
+        // Dynamic FOV — scales from 75 to 105 with speed
+        const spd = this.getHorizontalSpeed();
+        const targetFov = 75 + Math.min(1, spd / 180) * 30;
+        this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, 10 * delta);
+        this.camera.updateProjectionMatrix();
     }
 
     public getHorizontalSpeed(): number {
