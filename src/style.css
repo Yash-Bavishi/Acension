@@ -118,6 +118,44 @@ html, body {
   text-shadow: 0 0 30px rgba(0, 242, 254, 1);
 }
 
+#hp-display {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 5;
+  margin-bottom: 80px;
+}
+
+.hp-pip {
+  font-size: 28px;
+  color: #ff3333;
+  text-shadow: 0 0 10px rgba(255,50,50,0.6);
+  transition: color 0.2s, transform 0.2s;
+}
+
+.hp-pip.lost {
+  color: #333;
+  text-shadow: none;
+  transform: scale(0.7);
+}
+
+#hit-marker {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 28px;
+  color: #ff4444;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
 #ammo-display {
   position: absolute;
   bottom: 30px;

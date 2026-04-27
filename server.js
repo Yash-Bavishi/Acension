@@ -12,8 +12,8 @@ const wss = new WebSocketServer({ server: httpServer });
 app.use(express.static(join(__dirname, 'dist')));
 app.get('/{*path}', (_req, res) => res.sendFile(join(__dirname, 'dist', 'index.html')));
 
-// rooms: Map<roomId, Map<socketId, ws>>
-const rooms = new Map();
+const rooms = new Map();   // roomId -> Map<id, ws>
+const playerHP = new Map(); // id -> hp
 let nextId = 1;
 
 wss.on('connection', (ws) => {
@@ -37,6 +37,7 @@ wss.on('connection', (ws) => {
 
             playerIndex = room.size + 1;
             room.set(id, ws);
+            playerHP.set(id, 3);
 
             ws.send(JSON.stringify({ type: 'joined', id, playerIndex }));
             broadcast(currentRoom, id, { type: 'player_joined', id, username: msg.username, playerIndex });
@@ -48,9 +49,14 @@ wss.on('connection', (ws) => {
         }
 
         if (msg.type === 'hit' && currentRoom && rooms.has(currentRoom)) {
-            const target = rooms.get(currentRoom).get(msg.targetId);
+            const targetId = msg.targetId;
+            const target = rooms.get(currentRoom).get(targetId);
             if (target?.readyState === 1) {
-                target.send(JSON.stringify({ type: 'hit' }));
+                const hp = Math.max(0, (playerHP.get(targetId) ?? 3) - 1);
+                playerHP.set(targetId, hp <= 0 ? 3 : hp);
+                target.send(JSON.stringify({ type: 'hit', hp }));
+                // Tell everyone the peer's new HP for health bar update
+                broadcast(currentRoom, targetId, { type: 'peer_hp', id: targetId, hp });
             }
         }
     });

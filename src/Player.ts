@@ -41,6 +41,7 @@ export class Player {
     private bots: Bot[] = [];
     public onBhop: ((chain: number) => void) | null = null;
     public onHitPeer: ((peerId: string) => void) | null = null;
+    public onHitConfirm: (() => void) | null = null;
     private bhopChain = 0;
     private peerMeshes: { id: string; mesh: THREE.Mesh }[] = [];
     private yaw = 0;
@@ -229,13 +230,16 @@ export class Player {
             bot?.hit(34);
         }
 
-        // Peer player hits
+        // Peer player hits — don't recurse into sprite children
         const peerMeshList = this.peerMeshes.map(p => p.mesh);
-        const peerHits = raycaster.intersectObjects(peerMeshList, true);
+        const peerHits = raycaster.intersectObjects(peerMeshList, false);
         if (peerHits.length > 0) {
             const hitMesh = peerHits[0].object as THREE.Mesh;
-            const peer = this.peerMeshes.find(p => p.mesh === hitMesh || p.mesh.children.includes(hitMesh));
-            if (peer) this.onHitPeer?.(peer.id);
+            const peer = this.peerMeshes.find(p => p.mesh === hitMesh);
+            if (peer) {
+                this.onHitPeer?.(peer.id);
+                this.onHitConfirm?.();
+            }
         }
 
         if (!this.bulletTemplate) return;

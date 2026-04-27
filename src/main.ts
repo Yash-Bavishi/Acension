@@ -60,11 +60,20 @@ function startGame(mapType: MapType) {
     multiplayer = new Multiplayer(scene);
     multiplayer.connect(room, username);
 
-    multiplayer.onHit = () => {
-        const flash = document.getElementById('fall-flash') as HTMLElement | null;
-        if (flash) { flash.style.opacity = '1'; setTimeout(() => { flash.style.opacity = '0'; }, 300); }
+    const updateHPDisplay = (hp: number) => {
+        for (let i = 1; i <= 3; i++) {
+            document.getElementById(`hp-${i}`)?.classList.toggle('lost', i > hp);
+        }
+    };
+
+    multiplayer.onHit = (hp: number) => {
+        updateHPDisplay(hp);
+        const flash = document.getElementById('fall-flash')!;
+        flash.style.opacity = '0.6';
+        setTimeout(() => { flash.style.opacity = '0'; }, 300);
     };
     multiplayer.onDeath = () => {
+        updateHPDisplay(3);
         if (player && terrain) {
             player.worldVelocity.set(0, 0, 0);
             player.camera.position.copy(terrain.spawnPoint);
@@ -75,6 +84,17 @@ function startGame(mapType: MapType) {
     player = new Player(scene, bhopMode);
     player.setSpawn(terrain.spawnPoint, terrain.spawnAngleY);
     pacerBot = new PacerBot(scene, terrain, 0.75);
+
+    const hpDisplay = document.getElementById('hp-display')!;
+    hpDisplay.style.display = 'flex';
+    const hitMarker = document.getElementById('hit-marker')!;
+    hitMarker.style.display = 'block';
+    updateHPDisplay(3);
+
+    player.onHitConfirm = () => {
+        hitMarker.style.opacity = '1';
+        setTimeout(() => { hitMarker.style.opacity = '0'; }, 180);
+    };
 
     const bhopDisplay = document.getElementById('bhop-display')!;
     const bhopCount = document.getElementById('bhop-count')!;
@@ -142,14 +162,12 @@ function animate() {
     multiplayer?.update(delta, player.camera, currentUsername);
     if (multiplayer) {
         player.setPeerMeshes(multiplayer.getPeerMeshes());
-        player.onHitPeer = (peerId) => multiplayer!.sendHit(peerId);
+        player.onHitPeer = (peerId) => { multiplayer!.sendHit(peerId); multiplayer!.flashPeer(peerId); };
     }
 
     const spd = player.getHorizontalSpeed();
-
     const velocityMeter = document.getElementById('velocity-display');
     if (velocityMeter) velocityMeter.innerText = Math.round(spd).toString() + ' u/s';
-
     const vignette = document.getElementById('speed-vignette');
     if (vignette) vignette.style.opacity = Math.min(1, spd / 120).toFixed(3);
 
