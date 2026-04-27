@@ -34,11 +34,15 @@ export class Player {
     private bullets: { obj: THREE.Object3D; vel: THREE.Vector3; ttl: number }[] = [];
     private gunPivot!: THREE.Group;
     private muzzleAnchor = new THREE.Object3D();
+    private ammo = 15;
+    public onAmmoChange: ((ammo: number) => void) | null = null;
     private scene: THREE.Scene;
     private bhopMode: 'auto' | 'manual';
     private bots: Bot[] = [];
     public onBhop: ((chain: number) => void) | null = null;
+    public onHitPeer: ((peerId: string) => void) | null = null;
     private bhopChain = 0;
+    private peerMeshes: { id: string; mesh: THREE.Mesh }[] = [];
     private yaw = 0;
     private pitch = 0;
 
@@ -144,6 +148,10 @@ export class Player {
         this.bots = bots;
     }
 
+    public setPeerMeshes(peers: { id: string; mesh: THREE.Mesh }[]) {
+        this.peerMeshes = peers;
+    }
+
     public setSpawn(pos: THREE.Vector3, angleY: number) {
         this.camera.position.copy(pos);
         this.yaw = angleY;
@@ -205,15 +213,29 @@ export class Player {
     }
 
     private spawnBullet() {
-        // Instant hit detection
+        if (this.ammo <= 0) return;
+        this.ammo--;
+        this.onAmmoChange?.(this.ammo);
+
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+
+        // Bot hits
         const botMeshes = this.bots.flatMap(b => b.getHittableMeshes());
-        const hits = raycaster.intersectObjects(botMeshes);
-        if (hits.length > 0) {
-            const hitMesh = hits[0].object as THREE.Mesh;
+        const botHits = raycaster.intersectObjects(botMeshes);
+        if (botHits.length > 0) {
+            const hitMesh = botHits[0].object as THREE.Mesh;
             const bot = this.bots.find(b => b.getHittableMeshes().includes(hitMesh));
             bot?.hit(34);
+        }
+
+        // Peer player hits
+        const peerMeshList = this.peerMeshes.map(p => p.mesh);
+        const peerHits = raycaster.intersectObjects(peerMeshList, true);
+        if (peerHits.length > 0) {
+            const hitMesh = peerHits[0].object as THREE.Mesh;
+            const peer = this.peerMeshes.find(p => p.mesh === hitMesh || p.mesh.children.includes(hitMesh));
+            if (peer) this.onHitPeer?.(peer.id);
         }
 
         if (!this.bulletTemplate) return;
@@ -392,6 +414,10 @@ export class Player {
                 if (spd > 4) {
                     this.bhopChain++;
                     this.onBhop?.(this.bhopChain);
+                    if (this.bhopChain % 3 === 0) {
+                        this.ammo = Math.min(15, this.ammo + 5);
+                        this.onAmmoChange?.(this.ammo);
+                    }
                 }
             } else {
                 this.bhopChain = 0;

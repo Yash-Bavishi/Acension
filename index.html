@@ -17,6 +17,9 @@
       <div id="velocity-display" style="display: none;">0 u/s</div>
       <div id="username-display" style="display: none;"></div>
       <div id="speed-vignette"></div>
+      <div id="fall-flash"></div>
+      <div id="mp-status" style="position:fixed;top:10px;left:10px;z-index:99;font-family:monospace;font-size:13px;color:#0f0;background:rgba(0,0,0,0.6);padding:6px 10px;border-radius:6px;display:none;"></div>
+      <div id="ammo-display" style="display:none;"><span id="ammo-count">15</span><span id="ammo-label">AMMO</span></div>
       <div id="milestone-banner"></div>
       <div id="bhop-display" style="display: none;">
         <span id="bhop-label">BHOP</span>
@@ -39,6 +42,12 @@
         <!-- Username Input -->
         <div class="username-input-wrap">
           <input type="text" id="username-input" class="username-input" placeholder="Enter your name" maxlength="20" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <!-- Room Input -->
+        <div class="username-input-wrap" style="display:flex;gap:10px;align-items:center;">
+          <input type="text" id="room-input" class="username-input" placeholder="Room code" maxlength="12" autocomplete="off" spellcheck="false" style="width:180px;" />
+          <button id="btn-generate-room" class="toggle-btn active" style="padding:12px 18px;border-radius:50px;">Generate</button>
         </div>
 
         <!-- Bhop Mode Toggle -->
