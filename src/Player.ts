@@ -230,17 +230,6 @@ export class Player {
             bot?.hit(34);
         }
 
-        // Peer player hits — don't recurse into sprite children
-        const peerMeshList = this.peerMeshes.map(p => p.mesh);
-        const peerHits = raycaster.intersectObjects(peerMeshList, false);
-        if (peerHits.length > 0) {
-            const hitMesh = peerHits[0].object as THREE.Mesh;
-            const peer = this.peerMeshes.find(p => p.mesh === hitMesh);
-            if (peer) {
-                this.onHitPeer?.(peer.id);
-                this.onHitConfirm?.();
-            }
-        }
 
         if (!this.bulletTemplate) return;
 
@@ -302,7 +291,22 @@ export class Player {
             b.ttl -= delta;
             b.vel.y -= 30 * delta;
             b.obj.position.addScaledVector(b.vel, delta);
-            if (b.ttl <= 0) {
+
+            // Check bullet vs peer positions
+            let hit = false;
+            for (const peer of this.peerMeshes) {
+                const dx = b.obj.position.x - peer.mesh.position.x;
+                const dy = b.obj.position.y - (peer.mesh.position.y + 2.5);
+                const dz = b.obj.position.z - peer.mesh.position.z;
+                if (Math.abs(dx) < 1.5 && Math.abs(dy) < 3.5 && Math.abs(dz) < 1.5) {
+                    this.onHitPeer?.(peer.id);
+                    this.onHitConfirm?.();
+                    hit = true;
+                    break;
+                }
+            }
+
+            if (b.ttl <= 0 || hit) {
                 this.scene.remove(b.obj);
                 this.bullets.splice(i, 1);
             }

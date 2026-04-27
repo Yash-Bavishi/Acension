@@ -157,13 +157,13 @@ function animate() {
     if (delta > 0.1) delta = 0.1;
 
     terrain.update(clock.getElapsedTime());
-    player.update(delta, terrain);
-    pacerBot?.update(delta, terrain);
     multiplayer?.update(delta, player.camera, currentUsername);
     if (multiplayer) {
         player.setPeerMeshes(multiplayer.getPeerMeshes());
         player.onHitPeer = (peerId) => { multiplayer!.sendHit(peerId); multiplayer!.flashPeer(peerId); };
     }
+    player.update(delta, terrain);
+    pacerBot?.update(delta, terrain);
 
     const spd = player.getHorizontalSpeed();
     const velocityMeter = document.getElementById('velocity-display');
