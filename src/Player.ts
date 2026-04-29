@@ -319,120 +319,10 @@ export class Player {
             this.jumpRequested = false;
         }
 
-        let floorY = terrain.getHeight(this.camera.position.x, this.camera.position.z);
-        const playerRadius = 1.8;
-        const feetY = this.camera.position.y - PLAYER_HEIGHT;
-
-        // --- 3D AABB Sweep for Dynamic Platforms ---
-        let onPlatformDisplacementX = 0;
-        let onPlatformDisplacementZ = 0;
-
-        for (const p of terrain.platforms) {
-            const b = p.box;
-
-            if (this.camera.position.x + playerRadius > b.min.x && this.camera.position.x - playerRadius < b.max.x &&
-                this.camera.position.z + playerRadius > b.min.z && this.camera.position.z - playerRadius < b.max.z) {
-
-                // If feet are above or explicitly landing onto the platform
-                if (feetY >= b.max.y - 1.5) {
-                    floorY = Math.max(floorY, b.max.y);
-
-                    // Track precise movement vector of the floor you are standing on
-                    if (floorY === b.max.y) {
-                        onPlatformDisplacementX = p.mesh.position.x - p.prevX;
-                        onPlatformDisplacementZ = p.mesh.position.z - p.prevZ;
-                    }
-                }
-                // Bonk checking for undersides (hit head)
-                else if (this.camera.position.y <= b.min.y) {
-                    if (this.worldVelocity.y > 0 && this.camera.position.y > b.min.y - 1.0) {
-                        this.worldVelocity.y = -5.0;
-                    }
-                }
-                // Hit horizontal wall, execute push-off calculation!
-                else {
-                    const dx1 = b.max.x - (this.camera.position.x - playerRadius);
-                    const dx2 = (this.camera.position.x + playerRadius) - b.min.x;
-                    const dz1 = b.max.z - (this.camera.position.z - playerRadius);
-                    const dz2 = (this.camera.position.z + playerRadius) - b.min.z;
-
-                    const minPush = Math.min(dx1, dx2, dz1, dz2);
-
-                    if (minPush === dx1) {
-                        this.camera.position.x += dx1;
-                        if (this.worldVelocity.x < 0) this.worldVelocity.x *= -0.5; // bounce a little
-                    } else if (minPush === dx2) {
-                        this.camera.position.x -= dx2;
-                        if (this.worldVelocity.x > 0) this.worldVelocity.x *= -0.5;
-                    } else if (minPush === dz1) {
-                        this.camera.position.z += dz1;
-                        if (this.worldVelocity.z < 0) this.worldVelocity.z *= -0.5;
-                    } else if (minPush === dz2) {
-                        this.camera.position.z -= dz2;
-                        if (this.worldVelocity.z > 0) this.worldVelocity.z *= -0.5;
-                    }
-                }
-            }
-        }
-
-        let isGrounded = this.camera.position.y <= floorY + PLAYER_HEIGHT + 0.05;
-
-        if (!isGrounded) {
-            this.worldVelocity.y -= PHYSICS.gravity * delta;
-        }
-
-        let jumpedThisFrame = false;
-
-        if (isGrounded) {
-            this.camera.position.y = floorY + PLAYER_HEIGHT;
-            this.camera.position.x += onPlatformDisplacementX;
-            this.camera.position.z += onPlatformDisplacementZ;
-
-            if (this.worldVelocity.y < 0) this.worldVelocity.y = 0;
-
-            const shouldJump = this.bhopMode === 'auto'
-                ? this.holdingSpace
-                : this.jumpRequested;
-
-            if (shouldJump) {
-                const spd = this.getHorizontalSpeed();
-                if (spd > 0 && this.bhopChain >= 3) {
-                    const newSpd = Math.min(spd * (this.bhopMode === 'auto' ? 1.18 : 1.08), 200);
-
-                    if (this.bhopMode === 'auto') {
-                        // Camera always steers in auto mode
-                        const camForward = new THREE.Vector3();
-                        this.camera.getWorldDirection(camForward);
-                        camForward.y = 0;
-                        camForward.normalize();
-                        this.worldVelocity.x = camForward.x * newSpd;
-                        this.worldVelocity.z = camForward.z * newSpd;
-                    } else {
-                        this.worldVelocity.x *= newSpd / spd;
-                        this.worldVelocity.z *= newSpd / spd;
-                    }
-                }
-                this.worldVelocity.y = PHYSICS.jumpVelocity;
-                isGrounded = false;
-                jumpedThisFrame = true;
-                this.jumpRequested = false;
-                this.jumpBufferTime = 0;
-
-                // Register bhop — grounded + speed means it's a real hop
-                if (spd > 4) {
-                    this.bhopChain++;
-                    this.onBhop?.(this.bhopChain);
-                    if (this.bhopChain % 3 === 0) {
-                        this.ammo = Math.min(15, this.ammo + 5);
-                        this.onAmmoChange?.(this.ammo);
-                    }
-                }
-            } else {
-                this.bhopChain = 0;
-                this.applyFriction(delta);
-            }
-        }
-
+        // ---------------------------------------------------------------
+        // Build input / acceleration vectors BEFORE the movement loop so
+        // they are available inside every sub-step.
+        // ---------------------------------------------------------------
         const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
         right.y = 0;
         right.normalize();
@@ -448,13 +338,193 @@ export class Player {
         if (wishDir.lengthSq() > 0) wishDir.normalize();
 
         const hasInput = this.moveForward || this.moveBackward || this.moveLeft || this.moveRight;
-        if (isGrounded || jumpedThisFrame) {
-            if (hasInput) this.accelerate(wishDir, PHYSICS.maxVelocityGround, PHYSICS.accelerate, delta);
-        } else {
-            this.accelerate(wishDir, PHYSICS.maxVelocityAir, PHYSICS.airAccelerate, delta);
-        }
 
-        this.camera.position.addScaledVector(this.worldVelocity, delta);
+        // ---------------------------------------------------------------
+        // FIX 1 — TUNNELING: sub-step movement so we never skip over terrain.
+        // We advance in steps no larger than MAX_STEP_SIZE units horizontally.
+        // ---------------------------------------------------------------
+        const MAX_STEP_SIZE = 2.5; // units per sub-step — tighter than min platform thickness
+        const totalMove = this.worldVelocity.clone().multiplyScalar(delta);
+        const totalDist = totalMove.length();
+        const numSteps  = Math.max(1, Math.ceil(totalDist / MAX_STEP_SIZE));
+        const subDelta  = delta / numSteps;
+
+        let isGrounded     = false;
+        let canJump        = false;
+        let jumpedThisFrame = false;
+        let onPlatform     = false;
+        let floorY         = 0;
+        let onPlatformDisplacementX = 0;
+        let onPlatformDisplacementZ = 0;
+
+        for (let step = 0; step < numSteps; step++) {
+
+            // --- Compute floor at current XZ ---
+            const playerRadius = 1.8;
+            floorY = terrain.getHeight(this.camera.position.x, this.camera.position.z);
+            const feetY  = this.camera.position.y - PLAYER_HEIGHT;
+            onPlatformDisplacementX = 0;
+            onPlatformDisplacementZ = 0;
+
+            // --- Platform AABB collision ---
+            for (const p of terrain.platforms) {
+                const b = p.box;
+
+                if (this.camera.position.x + playerRadius > b.min.x && this.camera.position.x - playerRadius < b.max.x &&
+                    this.camera.position.z + playerRadius > b.min.z && this.camera.position.z - playerRadius < b.max.z) {
+
+                    if (feetY >= b.max.y - 1.5) {
+                        floorY = Math.max(floorY, b.max.y);
+
+                        if (floorY === b.max.y) {
+                            onPlatformDisplacementX = p.mesh.position.x - p.prevX;
+                            onPlatformDisplacementZ = p.mesh.position.z - p.prevZ;
+                        }
+                    }
+                    else if (this.camera.position.y <= b.min.y) {
+                        if (this.worldVelocity.y > 0 && this.camera.position.y > b.min.y - 1.0) {
+                            this.worldVelocity.y = -5.0;
+                        }
+                    }
+                    else {
+                        const dx1 = b.max.x - (this.camera.position.x - playerRadius);
+                        const dx2 = (this.camera.position.x + playerRadius) - b.min.x;
+                        const dz1 = b.max.z - (this.camera.position.z - playerRadius);
+                        const dz2 = (this.camera.position.z + playerRadius) - b.min.z;
+
+                        const minPush = Math.min(dx1, dx2, dz1, dz2);
+
+                        if (minPush === dx1) {
+                            this.camera.position.x += dx1;
+                            if (this.worldVelocity.x < 0) this.worldVelocity.x *= -0.5;
+                        } else if (minPush === dx2) {
+                            this.camera.position.x -= dx2;
+                            if (this.worldVelocity.x > 0) this.worldVelocity.x *= -0.5;
+                        } else if (minPush === dz1) {
+                            this.camera.position.z += dz1;
+                            if (this.worldVelocity.z < 0) this.worldVelocity.z *= -0.5;
+                        } else if (minPush === dz2) {
+                            this.camera.position.z -= dz2;
+                            if (this.worldVelocity.z > 0) this.worldVelocity.z *= -0.5;
+                        }
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------------
+            // FIX 2 — SLOPE DETECTION: stronger slide force, lower threshold,
+            // and cancel any velocity component going UP the slope.
+            // FIX 3 — JUMP GATE: canJump is true ONLY when onPlatform.
+            //   Standing on bare terrain (mountain or flat ground) never allows
+            //   jumping — players must use the spiral platforms.
+            // ---------------------------------------------------------------
+            const px = this.camera.position.x;
+            const pz = this.camera.position.z;
+            const terrainH = terrain.getHeight(px, pz);
+
+            // Sample gradient with a slightly wider stencil for accuracy
+            const slopeX = (terrain.getHeight(px + 1.0, pz) - terrain.getHeight(px - 1.0, pz)) * 0.5;
+            const slopeZ = (terrain.getHeight(px, pz + 1.0) - terrain.getHeight(px, pz - 1.0)) * 0.5;
+            const slopeMag = Math.sqrt(slopeX * slopeX + slopeZ * slopeZ);
+
+            // floor raised clearly above terrain mesh = player is on a platform
+            onPlatform = floorY > terrainH + 0.5;
+
+            isGrounded = this.camera.position.y <= floorY + PLAYER_HEIGHT + 0.05;
+
+            // Grass base (terrainH < 40) = fully climbable, can jump freely
+            // Brown/rocky zone (terrainH >= 40) = slides, no jumping
+            const onGrass = !onPlatform && terrainH < 40;
+            const onRock  = !onPlatform && terrainH >= 40;
+
+            canJump = isGrounded && (onPlatform || onGrass);
+
+            if (isGrounded && onRock && slopeMag > 0.7) {
+                // Cancel uphill velocity — cannot climb rock
+                const uphillX = -slopeX;
+                const uphillZ = -slopeZ;
+                const velDotUphill = this.worldVelocity.x * uphillX + this.worldVelocity.z * uphillZ;
+                if (velDotUphill > 0) {
+                    this.worldVelocity.x -= velDotUphill * uphillX / (slopeMag * slopeMag);
+                    this.worldVelocity.z -= velDotUphill * uphillZ / (slopeMag * slopeMag);
+                }
+
+                // Slide down
+                this.worldVelocity.x -= slopeX * 280 * subDelta;
+                this.worldVelocity.z -= slopeZ * 280 * subDelta;
+
+                const hspd = this.getHorizontalSpeed();
+                if (hspd > 55) {
+                    this.worldVelocity.x *= 55 / hspd;
+                    this.worldVelocity.z *= 55 / hspd;
+                }
+            }
+
+            // Gravity
+            if (!isGrounded) {
+                this.worldVelocity.y -= PHYSICS.gravity * subDelta;
+            }
+
+            // Grounded resolution
+            if (isGrounded) {
+                this.camera.position.y = floorY + PLAYER_HEIGHT;
+                this.camera.position.x += onPlatformDisplacementX;
+                this.camera.position.z += onPlatformDisplacementZ;
+
+                if (this.worldVelocity.y < 0) this.worldVelocity.y = 0;
+
+                const shouldJump = canJump && (this.bhopMode === 'auto'
+                    ? this.holdingSpace
+                    : this.jumpRequested);
+
+                if (shouldJump) {
+                    const spd = this.getHorizontalSpeed();
+                    if (spd > 0 && this.bhopChain >= 3) {
+                        const newSpd = Math.min(spd * (this.bhopMode === 'auto' ? 1.18 : 1.08), 200);
+
+                        if (this.bhopMode === 'auto') {
+                            const camForward = new THREE.Vector3();
+                            this.camera.getWorldDirection(camForward);
+                            camForward.y = 0;
+                            camForward.normalize();
+                            this.worldVelocity.x = camForward.x * newSpd;
+                            this.worldVelocity.z = camForward.z * newSpd;
+                        } else {
+                            this.worldVelocity.x *= newSpd / spd;
+                            this.worldVelocity.z *= newSpd / spd;
+                        }
+                    }
+                    this.worldVelocity.y = PHYSICS.jumpVelocity;
+                    isGrounded = false;
+                    jumpedThisFrame = true;
+                    this.jumpRequested = false;
+                    this.jumpBufferTime = 0;
+
+                    if (spd > 4) {
+                        this.bhopChain++;
+                        this.onBhop?.(this.bhopChain);
+                        if (this.bhopChain % 3 === 0) {
+                            this.ammo = Math.min(15, this.ammo + 5);
+                            this.onAmmoChange?.(this.ammo);
+                        }
+                    }
+                } else if (!jumpedThisFrame) {
+                    // Only reset chain and apply friction when no jump happened in any sub-step
+                    this.bhopChain = 0;
+                    this.applyFriction(subDelta);
+                }
+            }
+
+            // Acceleration — applied per sub-step
+            if (isGrounded || jumpedThisFrame) {
+                if (hasInput) this.accelerate(wishDir, PHYSICS.maxVelocityGround, PHYSICS.accelerate, subDelta);
+            } else {
+                this.accelerate(wishDir, PHYSICS.maxVelocityAir, PHYSICS.airAccelerate, subDelta);
+            }
+
+            // Advance position by one sub-step
+            this.camera.position.addScaledVector(this.worldVelocity, subDelta);
+        }
 
         // Dynamic FOV — scales from 75 to 105 with speed
         const spd = this.getHorizontalSpeed();
