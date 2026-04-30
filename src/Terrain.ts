@@ -18,6 +18,8 @@ export class Terrain {
     public type: MapType;
     public spawnPoint = new THREE.Vector3();
     public spawnAngleY = 0;
+    public summitPos = new THREE.Vector3();
+    public summitY = 0;
 
     constructor(scene: THREE.Scene, type: MapType = 'classic') {
         this.type = type;
@@ -99,7 +101,7 @@ export class Terrain {
     }
 
     private generatePlatforms(scene: THREE.Scene, colorRock: THREE.Color, colorSnow: THREE.Color) {
-        const numStations = 160;
+        const numStations = 190;
         const platSize = 7;
         const pairHalfSpan = 4;
         const arcStep = 24;
@@ -111,7 +113,7 @@ export class Terrain {
 
         for (let i = 0; i < numStations; i++) {
             const t = i / (numStations - 1);
-            const spiralY = 35 + t * 255;
+            const spiralY = 35 + t * 295; // extends to y≈330
 
             let rRaw = 0;
             if (this.type === 'fuji') {
@@ -180,6 +182,39 @@ export class Terrain {
             angle += arcStep / r;
         }
 
+        // --- Summit flag — at mountain peak ---
+        const peakY = this.getHeight(0, 0);
+        const poleBaseY = peakY + 2;
+        const poleHeight = 14;
+        const poleMidY = poleBaseY + poleHeight / 2;
+        const poleTipY = poleBaseY + poleHeight;
+
+        this.summitY = poleBaseY;
+        this.summitPos.set(0, poleBaseY, 0);
+
+        const poleGeo = new THREE.CylinderGeometry(0.3, 0.3, poleHeight, 8);
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.5 });
+        const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+        poleMesh.position.set(0, poleMidY, 0);
+        scene.add(poleMesh);
+
+        const flagGeo = new THREE.PlaneGeometry(6, 4);
+        const flagMat = new THREE.MeshStandardMaterial({
+            color: 0xff2222,
+            emissive: new THREE.Color(0xff0000),
+            emissiveIntensity: 0.4,
+            side: THREE.DoubleSide,
+            roughness: 0.8,
+            metalness: 0.0
+        });
+        const flagMesh = new THREE.Mesh(flagGeo, flagMat);
+        flagMesh.position.set(3, poleTipY - 2, 0);
+        scene.add(flagMesh);
+
+        // Glow point light at pole tip
+        const flagLight = new THREE.PointLight(0xff4444, 6, 40);
+        flagLight.position.set(0, poleTipY, 0);
+        scene.add(flagLight);
     }
 
     public update(_time: number) {

@@ -28,6 +28,9 @@ export class Player {
     private holdingSpace = false;
     private jumpRequested = false;
     private jumpBufferTime = 0;
+    private flyMode = false;
+    private flyUp = false;
+    private flyDown = false;
     private muzzleFlash!: THREE.PointLight;
     private muzzleFlashTimer = 0;
     private bulletTemplate: THREE.Group | null = null;
@@ -114,10 +117,13 @@ export class Player {
 
             if (code === 'Space' || key === ' ') {
                 if (!this.holdingSpace) {
-                    this.jumpBufferTime = 0.15; // 150ms jump buffer
+                    this.jumpBufferTime = 0.15;
                 }
                 this.holdingSpace = true;
+                if (this.flyMode) this.flyUp = true;
             }
+            if (code === 'KeyF') this.flyMode = !this.flyMode;
+            if (code === 'ControlLeft' || code === 'ControlRight') this.flyDown = true;
         };
 
         const onKeyUp = (event: KeyboardEvent) => {
@@ -131,7 +137,9 @@ export class Player {
 
             if (code === 'Space' || key === ' ') {
                 this.holdingSpace = false;
+                this.flyUp = false;
             }
+            if (code === 'ControlLeft' || code === 'ControlRight') this.flyDown = false;
         };
 
         document.addEventListener('keydown', onKeyDown);
@@ -280,6 +288,21 @@ export class Player {
 
     public update(delta: number, terrain: Terrain) {
         if (!this.controls.isLocked) return;
+
+        // Fly mode — F to toggle, Space=up, Ctrl=down
+        if (this.flyMode) {
+            const flySpeed = 80;
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+            if (this.moveForward)  this.camera.position.addScaledVector(forward, flySpeed * delta);
+            if (this.moveBackward) this.camera.position.addScaledVector(forward, -flySpeed * delta);
+            if (this.moveLeft)     this.camera.position.addScaledVector(right, -flySpeed * delta);
+            if (this.moveRight)    this.camera.position.addScaledVector(right, flySpeed * delta);
+            if (this.flyUp)        this.camera.position.y += flySpeed * delta;
+            if (this.flyDown)      this.camera.position.y -= flySpeed * delta;
+            this.worldVelocity.set(0, 0, 0);
+            return;
+        }
 
         if (this.muzzleFlashTimer > 0) {
             this.muzzleFlashTimer -= delta;
@@ -432,12 +455,15 @@ export class Player {
 
             isGrounded = this.camera.position.y <= floorY + PLAYER_HEIGHT + 0.05;
 
-            // Grass base (terrainH < 40) = fully climbable, can jump freely
-            // Brown/rocky zone (terrainH >= 40) = slides, no jumping
+            // Grass base (terrainH < 40) = climbable
+            // Summit area (within 30 units of peak) = climbable so player can walk to flag
+            // Brown/rocky zone = slides, no jumping
+            const distFromPeak = Math.sqrt(px * px + pz * pz);
+            const atSummit = distFromPeak < 30;
             const onGrass = !onPlatform && terrainH < 40;
-            const onRock  = !onPlatform && terrainH >= 40;
+            const onRock  = !onPlatform && terrainH >= 40 && !atSummit;
 
-            canJump = isGrounded && (onPlatform || onGrass);
+            canJump = isGrounded && (onPlatform || onGrass || atSummit);
 
             if (isGrounded && onRock && slopeMag > 0.7) {
                 // Cancel uphill velocity — cannot climb rock

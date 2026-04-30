@@ -20,6 +20,7 @@ let currentUsername = '';
 const clock = new THREE.Clock();
 let isStarted = false;
 let bhopMode: 'auto' | 'manual' = 'auto';
+let summitReached = false;
 const portals: Portal[] = [];
 
 // Parse portal entry params
@@ -182,6 +183,16 @@ function startGame(mapType: MapType) {
     }
 
     isStarted = true;
+
+    window.addEventListener('summit-reached', (e: Event) => {
+        const username = (e as CustomEvent).detail.username;
+        const screen = document.getElementById('winner-screen')!;
+        document.getElementById('winner-name')!.innerText = username;
+        screen.style.display = 'flex';
+        if (player) player.controls.unlock();
+    });
+    document.getElementById('winner-restart')?.addEventListener('click', () => location.reload());
+
     animate();
 
     setTimeout(() => {
@@ -201,6 +212,11 @@ document.getElementById('btn-generate-room')?.addEventListener('click', () => {
 document.getElementById('btn-classic')?.addEventListener('click', () => startGame('classic'));
 document.getElementById('btn-fuji')?.addEventListener('click', () => startGame('fuji'));
 
+function onSummitReached(username: string) {
+    summitReached = true;
+    window.dispatchEvent(new CustomEvent('summit-reached', { detail: { username } }));
+}
+
 function animate() {
     if (!isStarted || !terrain || !player) return;
     requestAnimationFrame(animate);
@@ -217,6 +233,16 @@ function animate() {
     player.update(delta, terrain);
     pacerBot?.update(delta, terrain);
     if (player) portals.forEach(p => p.update(delta, player!.camera.position));
+
+    // Summit win detection
+    if (!summitReached) {
+        const px = player.camera.position.x;
+        const pz = player.camera.position.z;
+        const xzDist = Math.sqrt(px * px + pz * pz);
+        if (xzDist < 5 && player.camera.position.y > terrain.summitY - 8) {
+            onSummitReached(currentUsername);
+        }
+    }
 
     const spd = player.getHorizontalSpeed();
     const velocityMeter = document.getElementById('velocity-display');
