@@ -4,6 +4,7 @@ import { Terrain, MapType } from './Terrain';
 import { Player } from './Player';
 import { PacerBot } from './PacerBot';
 import { Multiplayer } from './Multiplayer';
+import { Portal } from './Portal';
 
 const canvas = document.querySelector('#canvas') as HTMLCanvasElement;
 const scene = new THREE.Scene();
@@ -19,6 +20,23 @@ let currentUsername = '';
 const clock = new THREE.Clock();
 let isStarted = false;
 let bhopMode: 'auto' | 'manual' = 'auto';
+const portals: Portal[] = [];
+
+// Parse portal entry params
+const urlParams = new URLSearchParams(window.location.search);
+const isPortalEntry = urlParams.get('portal') === 'true';
+const portalRef = urlParams.get('ref') || '';
+const portalUsername = urlParams.get('username') || '';
+
+// Auto-start if arriving from a portal (no loading screen)
+if (isPortalEntry) {
+    const input = document.getElementById('username-input') as HTMLInputElement;
+    if (input) input.value = portalUsername || 'Visitor';
+    document.getElementById('main-menu')!.style.display = 'none';
+    window.addEventListener('DOMContentLoaded', () => startGame('classic'), { once: true });
+    // Fallback if DOMContentLoaded already fired
+    if (document.readyState !== 'loading') startGame('classic');
+}
 
 // Bhop mode toggle
 document.getElementById('mode-auto')?.addEventListener('click', () => {
@@ -129,6 +147,40 @@ function startGame(mapType: MapType) {
         }
     };
 
+    // --- Portals ---
+    const sp = terrain.spawnPoint;
+    const playerColor = 'blue'; // default; multiplayer updates after connect
+
+    // Portals — side by side, right next to spawn, grounded
+    const epx = sp.x - 5, epz1 = sp.z - 8, epz2 = sp.z + 8;
+    const exitPortalPos = new THREE.Vector3(epx, terrain.getHeight(epx, epz1) + 5, epz1);
+    portals.push(new Portal(scene, exitPortalPos, '🌀 Vibe Jam 2026', 0xaa44ff, () => {
+        const url = new URL('https://vibejam.cc/portal/2026');
+        url.searchParams.set('username', currentUsername || 'Visitor');
+        url.searchParams.set('ref', window.location.origin);
+        url.searchParams.set('speed', player ? Math.round(player.getHorizontalSpeed()).toString() : '0');
+        url.searchParams.set('color', playerColor);
+        if (player) {
+            url.searchParams.set('rotation_y', player.camera.rotation.y.toFixed(3));
+        }
+        window.location.href = url.toString();
+    }));
+
+    // Return portal → back to previous game (only if player arrived from a portal)
+    if (portalRef) {
+        const returnPortalPos = new THREE.Vector3(epx, terrain.getHeight(epx, epz2) + 5, epz2);
+        portals.push(new Portal(scene, returnPortalPos, '↩ Return Portal', 0x00f2fe, () => {
+            const base = portalRef.startsWith('http') ? portalRef : `https://${portalRef}`;
+            const url = new URL(base);
+            url.searchParams.set('portal', 'true');
+            url.searchParams.set('username', currentUsername || 'Visitor');
+            url.searchParams.set('ref', window.location.origin);
+            url.searchParams.set('speed', player ? Math.round(player.getHorizontalSpeed()).toString() : '0');
+            url.searchParams.set('color', playerColor);
+            window.location.href = url.toString();
+        }));
+    }
+
     isStarted = true;
     animate();
 
@@ -164,6 +216,7 @@ function animate() {
     }
     player.update(delta, terrain);
     pacerBot?.update(delta, terrain);
+    if (player) portals.forEach(p => p.update(delta, player!.camera.position));
 
     const spd = player.getHorizontalSpeed();
     const velocityMeter = document.getElementById('velocity-display');
